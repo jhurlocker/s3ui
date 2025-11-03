@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 import s3_utils
 import os
 import json
-from werkzeug.utils import secure_filename # We still import it, but use it differently
+from werkzeug.utils import secure_filename 
 import threading
 import time
 import logging
@@ -21,7 +21,10 @@ LOG_HEARTBEAT_INTERVAL = 30 # Number of loops before logging a heartbeat (30 loo
 # Set logging level for the poller
 poller_logger = logging.getLogger("PollingThread")
 poller_logger.setLevel(logging.INFO)
+# Set up logging for the main app
+app.logger.setLevel(logging.INFO) 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - [%(name)s] - %(levelname)s - %(message)s')
+
 
 def get_bucket_state(s3_client, bucket_name):
     """Scans a bucket and returns a dictionary of {object_key: ETag}."""
@@ -185,11 +188,17 @@ def view_bucket(bucket_name):
 
 @app.route('/upload/<bucket_name>', methods=['POST'])
 def upload(bucket_name):
+    # --- ADDED LOGGING ---
+    app.logger.info(f"--- UPLOAD ROUTE HIT ---")
+    
     prefix = request.form.get('prefix', '')
     files = request.files.getlist('files[]')
+    
+    app.logger.info(f"Received {len(files)} file(s) for bucket '{bucket_name}' with prefix '{prefix}'")
 
     if not files or files[0].filename == '':
         flash('No files were selected for upload.', 'warning')
+        app.logger.warning("Upload failed: No files selected.")
         return redirect(url_for('view_bucket', bucket_name=bucket_name, prefix=prefix))
         
     success_count = 0
@@ -197,52 +206,50 @@ def upload(bucket_name):
 
     for file in files:
         original_path = file.filename
+        content_type = file.content_type
         
-        if file.content_length == 0 and file.content_type == 'application/octet-stream':
+        # --- REMOVED FAULTY CHECK ---
+        # The check for content_length == 0 was skipping valid empty files.
+        # We will now only skip files that have no name.
+        
+        if not original_path:
+            app.logger.warning("Skipped file with no filename.")
             continue
             
-        # --- NEW ROBUST FIX ---
-        # We will not use secure_filename, as it is too restrictive for S3 object keys.
-        # Instead, we will manually clean the path to prevent traversal and whitespace issues.
-        
-        # S3 keys use forward slashes, but the browser might send backslashes
+        # --- ROBUST PATH CLEANING ---
         normalized_path = original_path.replace("\\", "/")
-        
         parts = normalized_path.split('/')
         clean_parts = []
-        
         is_path_valid = True
+        
         for part in parts:
-            # 1. Clean whitespace from beginning and end
             clean_part = part.strip()
-            
-            # 2. Check for invalid/traversal parts
             if not clean_part or clean_part == '.' or clean_part == '..':
                 is_path_valid = False
                 break
-            
             clean_parts.append(clean_part)
             
         if not is_path_valid or not clean_parts:
             error_messages.append(f"Skipped file with invalid path: '{original_path}'")
+            app.logger.warning(f"Skipped file with invalid path: '{original_path}'")
             continue
             
-        # Re-join the path with the S3 separator
         clean_path = "/".join(clean_parts)
-        # --- END OF NEW FIX ---
-
         object_name = f"{prefix}{clean_path}"
         
-        success, error = s3_utils.upload_file(file, bucket_name, object_name)
+        app.logger.info(f"Uploading file: '{original_path}' as '{object_name}' with ContentType: {content_type}")
+        
+        success, error = s3_utils.upload_file(file, bucket_name, object_name, content_type=content_type)
         if success:
             success_count += 1
+            app.logger.info(f"Successfully uploaded '{object_name}'")
         else:
             error_messages.append(f"Failed to upload '{clean_path}': {error}")
+            app.logger.error(f"Failed to upload '{object_name}': {error}")
 
     if success_count > 0:
         flash(f'Successfully uploaded {success_count} file(s).', 'success')
     if error_messages:
-        # Join multiple errors with a <br> for better display
         flash('<br>'.join(error_messages), 'danger')
 
     return redirect(url_for('view_bucket', bucket_name=bucket_name, prefix=prefix))
