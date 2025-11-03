@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 import s3_utils
 import os
 import json
-from werkzeug.utils import secure_filename # Make sure this is imported
+from werkzeug.utils import secure_filename # We still import it, but use it differently
 import threading
 import time
 import logging
@@ -201,41 +201,35 @@ def upload(bucket_name):
         if file.content_length == 0 and file.content_type == 'application/octet-stream':
             continue
             
-        # --- NEW FILENAME CLEANING LOGIC ---
-        # Clean the path to remove problematic characters like leading spaces,
-        # while preserving the directory structure.
+        # --- NEW ROBUST FIX ---
+        # We will not use secure_filename, as it is too restrictive for S3 object keys.
+        # Instead, we will manually clean the path to prevent traversal and whitespace issues.
         
-        clean_path = ""
-        # S3 always uses forward slashes, regardless of OS
-        if '/' in original_path:
-            # This is a file in a directory. Split it, clean the filename, and rejoin.
-            try:
-                parts = original_path.rsplit('/', 1)
-                dir_part = parts[0]
-                file_part = parts[1]
-                
-                # secure_filename cleans leading/trailing spaces, non-ASCII, etc.
-                clean_file_part = secure_filename(file_part)
-                
-                if not clean_file_part:
-                     # Handle cases where the filename itself is invalid (e.g., " .txt")
-                    raise ValueError("Invalid filename")
-               
-                # Re-join with S3's separator
-                clean_path = f"{dir_part}/{clean_file_part}"
-            except Exception:
-                error_messages.append(f"Skipped file with problematic path: '{original_path}'")
-                continue
-        else:
-            # This is just a top-level file. Clean the whole name.
-            clean_path = secure_filename(original_path)
+        # S3 keys use forward slashes, but the browser might send backslashes
+        normalized_path = original_path.replace("\\", "/")
+        
+        parts = normalized_path.split('/')
+        clean_parts = []
+        
+        is_path_valid = True
+        for part in parts:
+            # 1. Clean whitespace from beginning and end
+            clean_part = part.strip()
             
-        if not clean_path:
-            # secure_filename() returned an empty string, meaning the filename was invalid
-            # (e.g., " .txt" or just " "). Skip it.
-            error_messages.append(f"Skipped invalid or empty filename: '{original_path}'")
+            # 2. Check for invalid/traversal parts
+            if not clean_part or clean_part == '.' or clean_part == '..':
+                is_path_valid = False
+                break
+            
+            clean_parts.append(clean_part)
+            
+        if not is_path_valid or not clean_parts:
+            error_messages.append(f"Skipped file with invalid path: '{original_path}'")
             continue
-        # --- END OF NEW LOGIC ---
+            
+        # Re-join the path with the S3 separator
+        clean_path = "/".join(clean_parts)
+        # --- END OF NEW FIX ---
 
         object_name = f"{prefix}{clean_path}"
         
@@ -377,4 +371,3 @@ if __name__ == '__main__':
     poller_thread.start()
     
     app.run(host='0.0.0.0', port=5001)
-
