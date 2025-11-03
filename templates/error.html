@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card text-center border-danger">
+    <div class="card-header bg-danger text-white">
+        <h3><i class="fas fa-exclamation-triangle"></i> S3 Connection Error</h3>
+    </div>
+    <div class="card-body">
+        <h5 class="card-title">Problem Connecting to S3 Endpoint</h5>
+        <p class="card-text">The application could not establish a connection with the configured S3 storage endpoint.</p>
+        
+        {% if error_message %}
+        <div class="alert alert-secondary mt-3 text-start">
+            <strong>Error Details:</strong>
+            <pre class="mb-0 bg-light p-2 rounded"><code>{{ error_message }}</code></pre>
+        </div>
+        {% endif %}
+
+        <p class="mt-4">Please check your configuration and restart the container if needed.</p>
+        <a href="{{ url_for('configure') }}" class="btn btn-primary">Check Configuration Status</a>
+    </div>
+    <div class="card-footer text-muted">
+        Verify your Endpoint URL, Access Key, and Secret Key.
+    </div>
+</div>
+{% endblock %}

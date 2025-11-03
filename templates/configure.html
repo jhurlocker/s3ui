@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>S3 Connection Configuration</h3>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-{{ 'success' if connection_status == 'Successfully Connected' else 'danger' }}" role="alert">
+            <strong>Status:</strong> {{ connection_status }}
+            {% if connection_error %}
+                <br><small>{{ connection_error }}</small>
+            {% endif %}
+        </div>
+
+        <p>Enter new credentials below to connect to an S3-compatible service. This will override any existing environment variables.</p>
+        
+        <form method="post">
+            <div class="mb-3">
+                <label for="endpoint_url" class="form-label">Endpoint URL</label>
+                <input type="text" class="form-control" id="endpoint_url" name="endpoint_url" value="{{ config.S3_ENDPOINT_URL }}" required placeholder="e.g., https://s3.amazonaws.com">
+            </div>
+            <div class="mb-3">
+                <label for="access_key" class="form-label">Access Key ID</label>
+                <input type="text" class="form-control" id="access_key" name="access_key" value="{{ config.S3_ACCESS_KEY }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="secret_key" class="form-label">Secret Access Key</label>
+                <input type="password" class="form-control" id="secret_key" name="secret_key" required placeholder="Enter new key to update">
+            </div>
+            <div class="mb-3">
+                <label for="region" class="form-label">Region (Optional)</label>
+                <input type="text" class="form-control" id="region" name="region" value="{{ config.get('S3_REGION', '') }}" placeholder="e.g., us-east-1">
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save & Test Connection</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
